@@ -1,65 +1,65 @@
 # odooclaw 🤖📊
 
-Skill para gestionar Odoo ERP mediante `odooapi-cli`.
+Skill for managing Odoo ERP using `odooapi-cli`.
 
-## Instalación
+## Installation
 
 ```bash
-# Instalar odooapi-cli
+# Install odooapi-cli
 brew install jaumecornado/tap/odooapi
 
-# Configurar credenciales
+# Configure credentials
 odooapi auth set \
-  --base-url https://tu-servidor.odoo.com \
-  --db tu_base_datos \
-  --username tu@email.com \
-  --password tu_password
+  --base-url https://your-server.odoo.com \
+  --db your_database \
+  --username your@email.com \
+  --password your_password
 ```
 
-## Uso Rápido
+## Quick Start
 
 ```bash
-# Verificar conexión
+# Verify connection
 odooapi ping
 odooapi whoami
 
-# Listar modelos
+# List models
 odooapi models list --filter account
 
-# Buscar facturas
+# Search invoices
 odooapi records search account.move \
   --domain '[["move_type", "=", "in_invoice"]]' \
   --limit 10
 
-# Describir modelo
+# Describe model
 odooapi fields describe account.move
 ```
 
-## Documentación
+## Documentation
 
-Ver [SKILL.md](./SKILL.md) para guía completa.
+See [SKILL.md](./SKILL.md) for complete guide.
 
-## Requisitos
+## Requirements
 
 - [odooapi-cli](https://github.com/jaumecornado/odooapi-cli)
-- Odoo 12+ (On-Premise u Online)
+- Odoo 12+ (On-Premise or Online)
 
-## Ejemplos
+## Examples
 
-### Buscar proveedores
+### Search suppliers
 ```bash
 odooapi records search res.partner \
   --domain '[["supplier", "=", true]]' \
   --limit 20
 ```
 
-### Leer factura específica
+### Read specific invoice
 ```bash
 odooapi records read account.move 123 \
   --fields name,date,amount,state
 ```
 
-### Listar asientos contables
+### List journal entries
 ```bash
 odooapi records search account.move \
   --domain '[["state", "=", "posted"]]' \
@@ -69,4 +69,4 @@ odooapi records search account.move \
 
 ---
 
-*"That's what she said!"* — Michael Scott, probablemente
+*"That's what she said!"* — Michael Scott, probably
