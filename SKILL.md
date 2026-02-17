@@ -238,7 +238,43 @@ odooapi records create account.move.line --data '{...}'
 
 **Always verify tax calculation after creating invoices!**
 
-## 🛠️ Helper Script: Create Invoice in Draft
+## 🛠️ Helper Scripts
+
+### 1. Check Account Existence (MANDATORY before invoice creation)
+
+**ALWAYS verify the account exists for the target company before creating an invoice:**
+
+```bash
+# Check if account exists for company (default: BAZINGA=2)
+./scripts/check-account.sh 629000
+
+# Check for specific company
+./scripts/check-account.sh 629000 2
+```
+
+**Possible outputs:**
+- ✅ `CUENTA ENCONTRADA: 629000 - Otros servicios (ID: 382)` → Procede a crear factura
+- ❌ `CUENTA NO ENCONTRADA` → Crea la cuenta primero
+- ❌ `SIN ACCESO: La cuenta existe pero pertenece a otra compañía` → Crea la cuenta para la compañía objetivo
+
+### 2. Create Account (if doesn't exist)
+
+```bash
+# Create an expense account
+./scripts/create-account.sh 629000 "Otros servicios" expense
+
+# Create account for specific company
+./scripts/create-account.sh 629000 "Otros servicios" expense 2
+```
+
+**Common account types:**
+- `expense` - Gastos (Grupo 6: 60x-69x)
+- `income` - Ingresos (Grupo 7: 70x-79x)
+- `asset_fixed` - Inmovilizado (Grupo 2: 21x-28x)
+- `asset_current` - Activo corriente (Grupo 3: 30x-39x)
+- `liability` - Pasivo (Grupo 4: 40x-49x)
+
+### 3. Create Invoice in Draft
 
 A helper script is provided to ensure invoices are always created in draft state:
 
@@ -257,6 +293,52 @@ A helper script is provided to ensure invoices are always created in draft state
 - ✅ Provides clear output with invoice ID
 - ✅ Reminds user that manual validation is required
 
+---
+
+## 📋 Complete Workflow: Create Invoice with Account Verification
+
+### Step-by-step process (MANDATORY):
+
+```bash
+# 1. Identify the correct account based on expense type
+#    - Material oficina → 629 (Otros servicios)
+#    - Suministros → 628 (Suministros)
+#    - Consultoría → 623 (Servicios profesionales)
+#    - etc.
+
+# 2. VERIFY account exists for target company
+./scripts/check-account.sh 629000 2
+
+# 3. If account doesn't exist, CREATE it
+./scripts/create-account.sh 629000 "Otros servicios" expense 2
+
+# 4. CONFIRM account now exists
+./scripts/check-account.sh 629000 2
+
+# 5. Create the invoice
+./scripts/create-invoice-draft.sh \
+  --partner-id 28 \
+  --date 2026-02-17 \
+  --reference "ES6J9SGAEUI - Amazon Papel A4" \
+  --lines '[[0,0,{"name":"Amazon Basics Papel A4","quantity":1,"price_unit":24.79,"account_id":XXX,"tax_ids":[[6,0,[227]]]}]]'
+```
+
+### ⚠️ Multi-Company Considerations
+
+**CRITICAL for SaaS Odoo environments:**
+
+1. **Account ownership**: Accounts may belong to a parent company (e.g., PlenaTres) but invoices to a child company (e.g., BAZINGA)
+2. **Permission errors**: If you get "ultrasecretos" / "no tiene permiso" errors, the account exists but for another company
+3. **Solution**: Create the same account code for the target company
+
+**Error patterns and solutions:**
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `CUENTA NO ENCONTRADA` | Account doesn't exist | Create account with `create-account.sh` |
+| `SIN ACCESO` | Account exists for different company | Create account for target company ID |
+| `company inconsistencies` | Account vs Invoice company mismatch | Verify account belongs to invoice company |
+
 ## Quick Reference: Draft State Checklist
 
 Before executing ANY invoice creation:
@@ -266,9 +348,56 @@ Before executing ANY invoice creation:
 - [ ] Verify user will manually validate later
 - [ ] Use `create` method only (no auto-posting)
 
+## 📚 Example: Complete Invoice Creation Flow
+
+### Scenario: Amazon Office Supplies Invoice
+
+```bash
+# 1. Check if account 629000 exists for BAZINGA (company 2)
+./scripts/check-account.sh 629000 2
+# Output: ✅ CUENTA ENCONTRADA: 629000 - Other services (ID: 1026)
+
+# 2. If account doesn't exist, create it
+./scripts/create-account.sh 629000 "Otros servicios" expense 2
+
+# 3. Create the invoice with full workflow
+./scripts/create-invoice-full.sh \
+  --partner-id 28 \
+  --date 2026-02-17 \
+  --account-code 629000 \
+  --account-name "Otros servicios" \
+  --amount 24.79 \
+  --description "Amazon Basics Papel A4 80gsm 2500u" \
+  --reference "ES6J9SGAEUI - Amazon Papel A4" \
+  --company-id 2
+
+# Expected output:
+# ✅ Factura creada exitosamente
+#    Número: FACTU/2026/02/0002
+#    Estado: BORRADOR
+#    Base: 24.79 €
+#    IVA: 5.21 €
+#    Total: 30.0 €
+```
+
+### Common Expense Account Mapping
+
+| Expense Type | PGCE Account | Account Name | Type |
+|--------------|--------------|--------------|------|
+| Office supplies (paper, etc.) | 629000 | Otros servicios | expense |
+| Utilities (water, electricity) | 628000 | Suministros | expense |
+| Professional services | 623000 | Servicios profesionales | expense |
+| Rent/Lease | 621000 | Arrendamientos y cánones | expense |
+| Repairs | 622000 | Reparaciones y conservación | expense |
+| Insurance | 625000 | Primas de seguros | expense |
+| Advertising | 627000 | Publicidad, propaganda | expense |
+| Bank fees | 626000 | Servicios bancarios | expense |
+
 ## Notes
 
 - Use `--json` for machine-readable output
 - Complex arguments use JSON syntax: `--domain '[["field", "operator", "value"]]'`
 - Supports both Odoo On-Premise and Odoo Online (Enterprise/Community)
 - **CRITICAL:** All invoices created via this skill MUST remain in draft state for manual validation
+- **CRITICAL:** Always verify account exists for target company before creating invoices
+- Multi-company environments require accounts to be created per-company or shared via parent company
