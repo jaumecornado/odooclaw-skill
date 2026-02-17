@@ -1,6 +1,6 @@
 ---
 name: odooclaw
-description: "Odoo ERP management via odooapi-cli. Use this skill for: (1) Connecting to Odoo and configuring credentials, (2) Listing and describing models (account.move, account.invoice, res.partner, etc.), (3) Searching and reading records, (4) Executing actions and methods in Odoo. Requires odooapi-cli installed (brew install jaumecornado/tap/odooapi)."
+description: "Odoo ERP management via odooapi-cli. Use this skill for: (1) Connecting to Odoo and configuring credentials, (2) Listing and describing models (account.move, account.invoice, res.partner, etc.), (3) Searching and reading records, (4) Executing actions and methods in Odoo. Requires odooapi-cli installed (brew install jaumecornado/tap/odooapi). CRITICAL: Before creating ANY invoice or accounting entry, you MUST verify accounting rules for the company's country (e.g., PGCE for Spain)."
 ---
 
 # Odoo CLI - Management Skill
@@ -12,6 +12,64 @@ This skill provides instructions for connecting to and managing an Odoo server u
 ```bash
 brew install jaumecornado/tap/odooapi
 ```
+
+## ⚠️ CRITICAL: Pre-Accounting Validation Protocol
+
+**BEFORE creating ANY invoice, vendor bill, or journal entry in Odoo, you MUST:**
+
+1. **Identify the company's country** (check `res.company` or `res.partner`)
+2. **Apply the local accounting standards** for that country
+3. **Verify account codes** comply with national regulations
+4. **CONSULT THE PGC EXPERT SKILL** before proceeding
+
+### 🔴 MANDATORY: Always Consult Local Accounting Rules
+
+**For ANY accounting operation, you MUST follow this workflow:**
+
+```
+1. Identificar el país de la empresa destinataria
+2. Consultar las normas contables del país (PGCE para España)
+3. Seleccionar las cuentas correctas según el tipo de gasto
+4. Validar la deductibilidad del IVA
+5. Crear el documento en Odoo
+```
+
+**For Spanish companies (PGCE):**
+
+You **MUST** consult the PGCE expert before any accounting operation:
+
+```bash
+# Always consult PGCE expert for correct account selection
+cd /Users/jaume/.openclaw/workspace-michaelscott/skills/pgc-contable-experto
+python3 scripts/pgc_lookup.py --query "<tipo de gasto>"
+```
+
+**Common Spanish account mappings:**
+- **600-609** - Purchases and expenses
+- **621-629** - External services (rent, insurance, repairs)
+- **630-639** - Personnel expenses and social security
+- **640-649** - Staff costs
+- **662** - Interest on debts
+- **472** - HP VAT supported (deductible)
+- **477** - HP VAT charged
+
+**Validation checklist before posting:**
+- [ ] Company country identified and local GAAP applied
+- [ ] Account code verified against local accounting plan (PGCE for Spain)
+- [ ] VAT treatment validated (deductible/partial/non-deductible)
+- [ ] Expense deductibility assessed according to tax law
+- [ ] Correct journal selected (purchase/sales/bank/etc.)
+
+**⚠️ NEVER create an invoice or journal entry without completing this checklist!**
+
+**Example workflow:**
+1. User asks: "Create a restaurant expense invoice for 50€+VAT"
+2. **CONSULT PGCE**: `python3 scripts/pgc_lookup.py --query "restaurante comida negocio"`
+3. PGCE response: Account 629 - Other services / NO VAT deductible for restaurants
+4. Create invoice in Odoo with validated account
+5. Verify the entry is correctly posted
+
+**Never post entries without this validation!**
 
 ## Credential Configuration
 
@@ -90,13 +148,127 @@ odooapi actions run <action-id> --model account.move --method post
 
 1. **Connect**: `odooapi auth set ...`
 2. **Verify**: `odooapi ping`
-3. **Explore models**: `odooapi models list --filter account`
-4. **Describe model**: `odooapi fields describe account.move`
-5. **Search records**: `odooapi records search ...`
-6. **Read details**: `odooapi records read ...`
+3. **Pre-Accounting Check**: Determine company country → Apply local GAAP (e.g., PGCE for Spain)
+4. **Validate accounts**: Consult local accounting rules before creating entries
+5. **Explore models**: `odooapi models list --filter account`
+6. **Describe model**: `odooapi fields describe account.move`
+7. **Create with validation**: Apply verified account codes to all entries
+8. **Search/Read records**: `odooapi records search/read ...`
+
+## ⚠️ CRITICAL: Creating Invoices in Draft State (MANDATORY)
+
+**ALL invoices MUST be created in "draft" state for manual validation.** Never auto-post invoices.
+
+### 📝 Mandatory: Draft State Policy
+
+When creating any invoice (vendor bill, customer invoice, credit note), you **MUST**:
+
+1. **Always create in `draft` state** - this is the default, do NOT override it
+2. **Never call `action_post` automatically** after creation
+3. **Leave validation for manual review** by the user
+
+**Correct behavior:**
+```bash
+# Create invoice - stays in draft automatically
+odooapi records create account.move --json --data '{
+  "move_type": "in_invoice",
+  "partner_id": 123,
+  "invoice_date": "2026-02-17",
+  "line_ids": [...]
+}'
+# Result: Invoice created in "draft" state ✅
+```
+
+**❌ NEVER do this:**
+```bash
+# DON'T auto-post invoices!
+odooapi actions run invoice.post --ids 123
+# This bypasses manual validation - NOT ALLOWED
+```
+
+---
+
+## ⚠️ CRITICAL: Creating Invoices with Tax Calculation
+
+**When creating invoices via API, taxes are NOT calculated automatically** because `onchange` methods don't fire via API calls.
+
+### ✅ CORRECT WAY: Create Invoice with Lines in Single Call
+
+**Always create the invoice with `invoice_line_ids`/`line_ids` in ONE call** to trigger Odoo's internal calculations:
+
+```bash
+# Create vendor bill (account.move) with lines - taxes calculate automatically
+odooapi records create account.move --json --data '{
+  "move_type": "in_invoice",
+  "partner_id": 123,
+  "invoice_date": "2026-02-17",
+  "line_ids": [
+    [0, 0, {
+      "name": "Consulting services",
+      "quantity": 1,
+      "price_unit": 100.00,
+      "account_id": 627,
+      "tax_ids": [[6, 0, [21]]]
+    }]
+  ]
+}'
+```
+
+**Key points:**
+- Use `line_ids` with format `[[0, 0, {line_data}]]` for Odoo 16+
+- Include `tax_ids` in each line: `[[6, 0, [tax_id_1, tax_id_2]]]`
+- **Never** create the invoice and lines in separate calls - taxes won't calculate!
+
+### ❌ WRONG WAY (taxes won't calculate)
+
+```bash
+# DON'T DO THIS - creates invoice without lines
+odooapi records create account.move --data '{"move_type": "in_invoice", "partner_id": 123}'
+
+# Then adding lines separately - taxes will be ZERO!
+odooapi records create account.move.line --data '{...}'
+```
+
+### Field Mapping Reference
+
+| Odoo Version | Invoice Model | Line Field | Tax Field |
+|--------------|---------------|------------|-----------|
+| Odoo 16+ | `account.move` | `line_ids` | `tax_ids` |
+| Odoo 15- | `account.invoice` | `invoice_line_ids` | `invoice_line_tax_ids` |
+
+**Always verify tax calculation after creating invoices!**
+
+## 🛠️ Helper Script: Create Invoice in Draft
+
+A helper script is provided to ensure invoices are always created in draft state:
+
+```bash
+# Use the helper script (recommended)
+./scripts/create-invoice-draft.sh \
+  --partner-id 123 \
+  --date 2026-02-17 \
+  --lines '[[0,0,{"name":"Consulting","quantity":1,"price_unit":100}]]' \
+  --reference "FAC-001"
+```
+
+**Features:**
+- ✅ Always creates in **draft** state
+- ✅ Validates authentication before creating
+- ✅ Provides clear output with invoice ID
+- ✅ Reminds user that manual validation is required
+
+## Quick Reference: Draft State Checklist
+
+Before executing ANY invoice creation:
+
+- [ ] Confirm invoice should be in **draft** state
+- [ ] Do NOT call `action_post` or similar posting actions
+- [ ] Verify user will manually validate later
+- [ ] Use `create` method only (no auto-posting)
 
 ## Notes
 
 - Use `--json` for machine-readable output
 - Complex arguments use JSON syntax: `--domain '[["field", "operator", "value"]]'`
 - Supports both Odoo On-Premise and Odoo Online (Enterprise/Community)
+- **CRITICAL:** All invoices created via this skill MUST remain in draft state for manual validation
